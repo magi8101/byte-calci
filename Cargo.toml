@@ -1,0 +1,31 @@
+[package]
+name = "calculator"
+version = "0.1.0"
+edition = "2021"
+description = "A GUI calculator with bytecode compiler and virtual machine"
+
+[dependencies]
+eframe = { version = "0.29", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+egui = "0.29"
+log = "0.4"
+
+# Native dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+
+# Web dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3"
+
+[profile.release]
+opt-level = "s"  # Optimize for size in web builds
+lto = true
+
+[profile.dev.package."*"]
+opt-level = 2
