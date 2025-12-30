@@ -162,32 +162,51 @@ impl CalculatorApp {
 
 impl eframe::App for CalculatorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Get available screen size to determine layout
+        let screen_width = ctx.screen_rect().width();
+        let is_mobile = screen_width < 600.0;
+
         // Top panel with title
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading("Bytecode Calculator");
-                ui.separator();
-                ui.checkbox(&mut self.show_details, "Show Details");
-                ui.checkbox(&mut self.show_trace, "Show Trace");
-                ui.checkbox(&mut self.debugger_active, "Debugger");
+                if !is_mobile {
+                    ui.separator();
+                    ui.checkbox(&mut self.show_details, "Show Details");
+                    ui.checkbox(&mut self.show_trace, "Show Trace");
+                    ui.checkbox(&mut self.debugger_active, "Debugger");
+                }
             });
         });
 
-        // Left panel with calculator buttons
-        egui::SidePanel::left("calculator_panel")
-            .min_width(280.0)
-            .show(ctx, |ui| {
-                self.render_calculator(ui);
+        if is_mobile {
+            // Mobile: single column layout with scrollable calculator
+            egui::CentralPanel::default().show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.render_calculator_responsive(ui, screen_width);
+                });
             });
+        } else {
+            // Desktop: side panel + central panel
+            egui::SidePanel::left("calculator_panel")
+                .min_width(280.0)
+                .max_width(320.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        self.render_calculator_responsive(ui, 280.0);
+                    });
+                });
 
-        // Central panel with details
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if self.show_details {
-                self.render_details(ui);
-            } else {
-                self.render_history(ui);
-            }
-        });
+            // Central panel with details
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if self.show_details {
+                    self.render_details(ui);
+                } else {
+                    self.render_history(ui);
+                }
+            });
+        }
     }
 }
 
@@ -236,6 +255,203 @@ impl CalculatorApp {
 
             // Calculator buttons
             self.render_buttons(ui);
+        });
+    }
+
+    fn render_calculator_responsive(&mut self, ui: &mut egui::Ui, available_width: f32) {
+        let padding = 16.0;
+        let usable_width = (available_width - padding).max(200.0);
+        
+        ui.vertical(|ui| {
+            // Input field - full width
+            ui.group(|ui| {
+                ui.label("Expression:");
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.input)
+                        .desired_width(usable_width)
+                        .font(egui::TextStyle::Monospace),
+                );
+
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    self.calculate();
+                }
+            });
+
+            // Result display - full width
+            ui.group(|ui| {
+                ui.label("Result:");
+                let result_text = match &self.compilation.result {
+                    Some(Ok(value)) => {
+                        if value.fract() == 0.0 && value.abs() < 1e15 {
+                            format!("{}", *value as i64)
+                        } else {
+                            format!("{:.10}", value)
+                                .trim_end_matches('0')
+                                .trim_end_matches('.')
+                                .to_string()
+                        }
+                    }
+                    Some(Err(e)) => format!("{}", e),
+                    None => String::new(),
+                };
+                ui.add(
+                    egui::TextEdit::singleline(&mut result_text.as_str())
+                        .desired_width(usable_width)
+                        .font(egui::TextStyle::Monospace),
+                );
+            });
+
+            ui.add_space(10.0);
+
+            // Responsive buttons
+            self.render_buttons_responsive(ui, usable_width);
+        });
+    }
+
+    fn render_buttons_responsive(&mut self, ui: &mut egui::Ui, available_width: f32) {
+        // Calculate button sizes based on available width
+        let num_cols = 4.0;
+        let spacing = 4.0;
+        let button_width = ((available_width - (num_cols - 1.0) * spacing) / num_cols).max(40.0);
+        let button_size = egui::vec2(button_width, 40.0);
+        
+        let func_cols = 5.0;
+        let small_width = ((available_width - (func_cols - 1.0) * spacing) / func_cols).max(35.0);
+        let small_button = egui::vec2(small_width, 32.0);
+
+        ui.style_mut().spacing.item_spacing = egui::vec2(spacing, spacing);
+
+        // Function buttons - Trig
+        ui.horizontal_wrapped(|ui| {
+            if ui.add_sized(small_button, egui::Button::new("sin")).clicked() {
+                self.insert_text("sin(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("cos")).clicked() {
+                self.insert_text("cos(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("tan")).clicked() {
+                self.insert_text("tan(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("sqrt")).clicked() {
+                self.insert_text("sqrt(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("log")).clicked() {
+                self.insert_text("log(");
+            }
+        });
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.add_sized(small_button, egui::Button::new("ln")).clicked() {
+                self.insert_text("ln(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("exp")).clicked() {
+                self.insert_text("exp(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("abs")).clicked() {
+                self.insert_text("abs(");
+            }
+            if ui.add_sized(small_button, egui::Button::new("n!")).clicked() {
+                self.insert_text("!");
+            }
+            if ui.add_sized(small_button, egui::Button::new("^")).clicked() {
+                self.insert_text("^");
+            }
+        });
+
+        ui.add_space(8.0);
+
+        // Number pad - 4 columns
+        ui.horizontal(|ui| {
+            if ui.add_sized(button_size, egui::Button::new("7")).clicked() {
+                self.insert_text("7");
+            }
+            if ui.add_sized(button_size, egui::Button::new("8")).clicked() {
+                self.insert_text("8");
+            }
+            if ui.add_sized(button_size, egui::Button::new("9")).clicked() {
+                self.insert_text("9");
+            }
+            if ui.add_sized(button_size, egui::Button::new("/")).clicked() {
+                self.insert_text("/");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            if ui.add_sized(button_size, egui::Button::new("4")).clicked() {
+                self.insert_text("4");
+            }
+            if ui.add_sized(button_size, egui::Button::new("5")).clicked() {
+                self.insert_text("5");
+            }
+            if ui.add_sized(button_size, egui::Button::new("6")).clicked() {
+                self.insert_text("6");
+            }
+            if ui.add_sized(button_size, egui::Button::new("*")).clicked() {
+                self.insert_text("*");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            if ui.add_sized(button_size, egui::Button::new("1")).clicked() {
+                self.insert_text("1");
+            }
+            if ui.add_sized(button_size, egui::Button::new("2")).clicked() {
+                self.insert_text("2");
+            }
+            if ui.add_sized(button_size, egui::Button::new("3")).clicked() {
+                self.insert_text("3");
+            }
+            if ui.add_sized(button_size, egui::Button::new("-")).clicked() {
+                self.insert_text("-");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            if ui.add_sized(button_size, egui::Button::new("0")).clicked() {
+                self.insert_text("0");
+            }
+            if ui.add_sized(button_size, egui::Button::new(".")).clicked() {
+                self.insert_text(".");
+            }
+            if ui.add_sized(button_size, egui::Button::new("(")).clicked() {
+                self.insert_text("(");
+            }
+            if ui.add_sized(button_size, egui::Button::new("+")).clicked() {
+                self.insert_text("+");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            if ui.add_sized(button_size, egui::Button::new(")")).clicked() {
+                self.insert_text(")");
+            }
+            if ui.add_sized(button_size, egui::Button::new("pi")).clicked() {
+                self.insert_text("pi");
+            }
+            if ui.add_sized(button_size, egui::Button::new("e")).clicked() {
+                self.insert_text("e");
+            }
+            if ui.add_sized(button_size, egui::Button::new("%")).clicked() {
+                self.insert_text("%");
+            }
+        });
+
+        ui.add_space(8.0);
+
+        // Control buttons
+        ui.horizontal(|ui| {
+            let ctrl_width = (available_width - 2.0 * spacing) / 3.0;
+            let ctrl_size = egui::vec2(ctrl_width, 45.0);
+            
+            if ui.add_sized(ctrl_size, egui::Button::new("⌫")).clicked() {
+                self.backspace();
+            }
+            if ui.add_sized(ctrl_size, egui::Button::new("C")).clicked() {
+                self.clear_input();
+            }
+            if ui.add_sized(ctrl_size, egui::Button::new("=")).clicked() {
+                self.calculate();
+            }
         });
     }
 
