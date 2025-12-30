@@ -107,6 +107,8 @@ pub struct CalculatorApp {
     debug_step: usize,
     /// Whether time-travel debugger is active
     debugger_active: bool,
+    /// Mobile view mode: 0 = calculator, 1 = details, 2 = history
+    mobile_view: usize,
 }
 
 impl Default for CalculatorApp {
@@ -119,6 +121,7 @@ impl Default for CalculatorApp {
             show_trace: false,
             debug_step: 0,
             debugger_active: false,
+            mobile_view: 0,
         }
     }
 }
@@ -180,11 +183,45 @@ impl eframe::App for CalculatorApp {
         });
 
         if is_mobile {
-            // Mobile: single column layout with scrollable calculator
-            egui::CentralPanel::default().show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.render_calculator_responsive(ui, screen_width);
+            // Mobile: Bottom navigation tabs
+            egui::TopBottomPanel::bottom("mobile_nav").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let tab_width = ui.available_width() / 3.0;
+                    let tab_size = egui::vec2(tab_width - 8.0, 40.0);
+                    
+                    if ui.add_sized(tab_size, egui::SelectableLabel::new(self.mobile_view == 0, "🔢 Calc")).clicked() {
+                        self.mobile_view = 0;
+                    }
+                    if ui.add_sized(tab_size, egui::SelectableLabel::new(self.mobile_view == 1, "📋 Details")).clicked() {
+                        self.mobile_view = 1;
+                    }
+                    if ui.add_sized(tab_size, egui::SelectableLabel::new(self.mobile_view == 2, "📜 History")).clicked() {
+                        self.mobile_view = 2;
+                    }
                 });
+            });
+
+            // Mobile: Content based on selected tab
+            egui::CentralPanel::default().show(ctx, |ui| {
+                match self.mobile_view {
+                    0 => {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            self.render_calculator_responsive(ui, screen_width);
+                        });
+                    }
+                    1 => {
+                        // Enable trace and debugger toggles on mobile details view
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.show_trace, "Trace");
+                            ui.checkbox(&mut self.debugger_active, "Debug");
+                        });
+                        ui.separator();
+                        self.render_details(ui);
+                    }
+                    _ => {
+                        self.render_history(ui);
+                    }
+                }
             });
         } else {
             // Desktop: side panel + central panel
@@ -209,7 +246,6 @@ impl eframe::App for CalculatorApp {
         }
     }
 }
-
 impl CalculatorApp {
     fn render_calculator(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
